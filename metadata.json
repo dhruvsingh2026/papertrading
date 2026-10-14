@@ -1,0 +1,7 @@
+{
+  "name": "Fairbook",
+  "description": "Clear markets, quiet desk. Live crypto and stock updates with paper trading.",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

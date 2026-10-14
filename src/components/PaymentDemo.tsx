@@ -20,9 +20,9 @@ const METHODS: Array<{
   hint: string
   icon: typeof Smartphone
 }> = [
-  { id: 'upi', label: 'UPI', hint: 'GPay · PhonePe · Paytm (demo)', icon: Smartphone },
-  { id: 'card', label: 'Card', hint: 'Visa · Mastercard · RuPay (demo)', icon: CreditCard },
-  { id: 'netbanking', label: 'Net banking', hint: 'All Indian banks (demo)', icon: Landmark },
+  { id: 'upi', label: 'UPI Fast Checkout', hint: 'Google Pay · PhonePe · Paytm · BHIM (Demo)', icon: Smartphone },
+  { id: 'card', label: 'Debit & Credit Card', hint: 'RuPay · Visa · Mastercard · Amex (Demo)', icon: CreditCard },
+  { id: 'netbanking', label: 'Net Banking', hint: 'SBI · HDFC · ICICI · Axis (Demo)', icon: Landmark },
 ]
 
 type Step = 'method' | 'processing' | 'success'
@@ -38,15 +38,17 @@ export function PaymentDemo({
   onSuccess,
 }: Props) {
   const [method, setMethod] = useState<DemoPayMethod>('upi')
-  const [upiId, setUpiId] = useState('fairbook@demo')
+  const [upiId, setUpiId] = useState('learner@demo')
   const [step, setStep] = useState<Step>('method')
 
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (prevOpen !== open) {
+    setPrevOpen(open)
     if (!open) {
       setStep('method')
       setMethod('upi')
     }
-  }, [open])
+  }
 
   useEffect(() => {
     if (!open) return
@@ -59,41 +61,48 @@ export function PaymentDemo({
 
   if (!open) return null
 
-  const title =
-    symbol === 'WALLET'
-      ? 'Add money'
-      : side === 'buy'
-        ? 'Demo payment'
-        : 'Demo payout'
-  const action =
-    symbol === 'WALLET'
-      ? `Pay ${amountLabel}`
-      : side === 'buy'
-        ? `Pay ${amountLabel}`
-        : `Receive ${amountLabel}`
+  const isDeposit = symbol === 'WALLET'
+  const title = isDeposit
+    ? 'SIMULATED WALLET FUNDING'
+    : side === 'buy'
+      ? 'SIMULATED ORDER CHECKOUT'
+      : 'SIMULATED ORDER SETTLEMENT'
 
-  const confirm = () => {
+  const actionLabel = isDeposit
+    ? `Authorize Deposit of ${amountLabel}`
+    : side === 'buy'
+      ? `Authorize Buy for ${amountLabel}`
+      : `Confirm Sale for ${amountLabel}`
+
+  const confirmExecution = () => {
     setStep('processing')
     window.setTimeout(() => {
       setStep('success')
       window.setTimeout(() => {
         onSuccess()
         onClose()
-      }, 900)
-    }, 1400)
+      }, 850)
+    }, 1200)
   }
 
   return (
     <div className="pay-overlay" role="dialog" aria-modal="true" aria-label={title}>
-      <button type="button" className="pay-backdrop" aria-label="Close" onClick={onClose} />
+      <button
+        type="button"
+        className="pay-backdrop"
+        aria-label="Close dialog"
+        onClick={() => {
+          if (step !== 'processing') onClose()
+        }}
+      />
       <div className="pay-sheet">
         <div className="pay-head">
           <div>
-            <p className="pay-badge">DEMO ONLY · no real money</p>
+            <span className="pay-badge">100% DEMO SIMULATION</span>
             <h2>{title}</h2>
             <p className="pay-sub">
-              {symbol === 'WALLET'
-                ? 'Wallet top-up'
+              {isDeposit
+                ? 'Virtual paper wallet top-up'
                 : `${side === 'buy' ? 'Buy' : 'Sell'} ${qtyLabel} ${symbol}`}
             </p>
           </div>
@@ -102,9 +111,9 @@ export function PaymentDemo({
             className="icon-btn"
             onClick={onClose}
             disabled={step === 'processing'}
-            aria-label="Close payment"
+            aria-label="Close"
           >
-            <X size={16} strokeWidth={1.75} />
+            <X size={18} />
           </button>
         </div>
 
@@ -112,6 +121,7 @@ export function PaymentDemo({
           <>
             <div className="pay-amount mono">{amountLabel}</div>
 
+            {/* Payment Method Selector */}
             <div className="pay-methods">
               {METHODS.map((m) => {
                 const Icon = m.icon
@@ -119,10 +129,10 @@ export function PaymentDemo({
                   <button
                     key={m.id}
                     type="button"
-                    className={method === m.id ? 'pay-method active' : 'pay-method'}
+                    className={`pay-method ${method === m.id ? 'active' : ''}`}
                     onClick={() => setMethod(m.id)}
                   >
-                    <Icon size={18} strokeWidth={1.75} />
+                    <Icon size={20} style={{ color: method === m.id ? 'var(--accent-ink)' : 'var(--secondary)' }} />
                     <span>
                       <strong>{m.label}</strong>
                       <small>{m.hint}</small>
@@ -132,32 +142,33 @@ export function PaymentDemo({
               })}
             </div>
 
+            {/* Method Inputs */}
             {method === 'upi' && (
               <label className="field">
-                <span>UPI ID (demo)</span>
+                <span>Simulated Virtual Payment Address (VPA)</span>
                 <input
                   className="mono"
                   value={upiId}
                   onChange={(e) => setUpiId(e.target.value)}
-                  placeholder="yourname@upi"
+                  placeholder="yourname@okhdfcbank"
                 />
               </label>
             )}
 
             {method === 'card' && (
-              <div className="pay-card-demo">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                 <label className="field">
-                  <span>Card number</span>
-                  <input className="mono" value="4111 1111 1111 1111" readOnly />
+                  <span>Simulated Card Number</span>
+                  <input className="mono" value="4532 •••• •••• 8824" readOnly />
                 </label>
-                <div className="pay-card-row">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
                   <label className="field">
                     <span>Expiry</span>
-                    <input className="mono" value="12/28" readOnly />
+                    <input className="mono" value="10/28" readOnly />
                   </label>
                   <label className="field">
                     <span>CVV</span>
-                    <input className="mono" value="123" readOnly />
+                    <input className="mono" value="•••" readOnly />
                   </label>
                 </div>
               </div>
@@ -165,48 +176,51 @@ export function PaymentDemo({
 
             {method === 'netbanking' && (
               <label className="field">
-                <span>Bank (demo)</span>
+                <span>Select Bank (Demo)</span>
                 <select defaultValue="sbi">
-                  <option value="sbi">State Bank of India</option>
-                  <option value="hdfc">HDFC Bank</option>
-                  <option value="icici">ICICI Bank</option>
-                  <option value="axis">Axis Bank</option>
+                  <option value="sbi">State Bank of India (Demo)</option>
+                  <option value="hdfc">HDFC Bank (Demo)</option>
+                  <option value="icici">ICICI Bank (Demo)</option>
+                  <option value="axis">Axis Bank (Demo)</option>
                 </select>
               </label>
             )}
 
             <button
               type="button"
-              className={side === 'buy' ? 'submit buy' : 'submit sell'}
-              onClick={confirm}
+              className={`btn ${side === 'sell' && !isDeposit ? 'danger' : 'primary'} full large`}
+              onClick={confirmExecution}
             >
-              {action}
+              {actionLabel}
             </button>
+
             <p className="disclaimer">
-              This is a Fairbook simulation. Nothing is charged to your bank or UPI.
+              Educational simulation only. No real money, payment gateway API, or banking institution is accessed.
             </p>
           </>
         )}
 
         {step === 'processing' && (
           <div className="pay-status">
-            <div className="pay-spinner" aria-hidden />
-            <p>Contacting demo gateway…</p>
-            <p className="muted">
+            <div className="pay-spinner" aria-hidden="true" />
+            <strong style={{ fontSize: '1.1rem', color: 'var(--ink)' }}>Simulating Authorization…</strong>
+            <p style={{ fontSize: '0.88rem', color: 'var(--secondary)' }}>
               {method === 'upi'
-                ? 'Waiting for UPI approval (simulated)'
+                ? 'Simulating instant UPI notification & confirmation…'
                 : method === 'card'
-                  ? 'Authorising card (simulated)'
-                  : 'Redirecting to bank (simulated)'}
+                  ? 'Simulating zero-friction tokenized card authorization…'
+                  : 'Simulating instant bank confirmation…'}
             </p>
           </div>
         )}
 
         {step === 'success' && (
-          <div className="pay-status success">
-            <CheckCircle2 size={36} strokeWidth={1.5} className="up" />
-            <p>Payment successful</p>
-            <p className="muted">{successHint}</p>
+          <div className="pay-status">
+            <CheckCircle2 size={44} style={{ color: 'var(--up)' }} />
+            <strong style={{ fontSize: '1.25rem', color: 'var(--ink)' }}>
+              {isDeposit ? 'Funds Deposited' : 'Order Executed'}
+            </strong>
+            <p style={{ fontSize: '0.88rem', color: 'var(--secondary)' }}>{successHint}</p>
           </div>
         )}
       </div>

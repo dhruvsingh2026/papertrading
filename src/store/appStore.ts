@@ -18,28 +18,28 @@ export const usePrefsStore = create<PrefsState>()(
   ),
 )
 
-export type AppTab = 'markets' | 'trade' | 'wallet' | 'activity' | 'profile'
-export type DeskNav = 'dashboard' | 'trading' | 'market' | 'portfolio'
-export type ExploreFilter = 'all' | 'crypto' | 'stocks' | 'mine' | 'gainers' | 'losers'
+export type AppDestination = 'overview' | 'markets' | 'trade' | 'portfolio' | 'activity' | 'profile'
+/** Backward compatible alias */
+export type AppTab = AppDestination | 'wallet'
+export type DeskNav = AppDestination | 'dashboard' | 'trading' | 'market'
 
-function deskNavForTab(tab: AppTab, prev: DeskNav): DeskNav {
-  if (tab === 'markets') return 'market'
-  if (tab === 'trade') return 'trading'
-  if (tab === 'wallet') return prev === 'portfolio' ? 'portfolio' : 'dashboard'
-  return prev
-}
+export type ExploreFilter = 'all' | 'crypto' | 'stocks' | 'mine' | 'gainers' | 'losers' | 'watchlist'
 
 interface SelectionState {
   selectedId: string
   selectedSymbol: string
   assetClass: AssetClass
   timeframe: Timeframe
-  tab: AppTab
-  deskNav: DeskNav
+  destination: AppDestination
   exploreFilter: ExploreFilter
   detailOpen: boolean
+  // backward-compatible getters
+  tab: AppTab
+  deskNav: DeskNav
+
   setSelection: (id: string, symbol: string, assetClass: AssetClass) => void
   setTimeframe: (tf: Timeframe) => void
+  setDestination: (dest: AppDestination) => void
   setTab: (tab: AppTab) => void
   setDeskNav: (nav: DeskNav) => void
   setExploreFilter: (filter: ExploreFilter) => void
@@ -47,15 +47,27 @@ interface SelectionState {
   openAsset: (id: string, symbol: string, assetClass: AssetClass) => void
 }
 
+function normalizeDestination(tab: string): AppDestination {
+  if (tab === 'wallet' || tab === 'dashboard') return 'overview'
+  if (tab === 'trading') return 'trade'
+  if (tab === 'market') return 'markets'
+  if (['overview', 'markets', 'trade', 'portfolio', 'activity', 'profile'].includes(tab)) {
+    return tab as AppDestination
+  }
+  return 'overview'
+}
+
 export const useSelectionStore = create<SelectionState>()((set) => ({
   selectedId: 'bitcoin',
   selectedSymbol: 'BTC',
   assetClass: 'crypto',
   timeframe: '1D',
-  tab: 'wallet',
-  deskNav: 'dashboard',
+  destination: 'overview',
+  tab: 'overview',
+  deskNav: 'overview',
   exploreFilter: 'all',
   detailOpen: false,
+
   setSelection: (id, symbol, assetClass) =>
     set((s) => ({
       selectedId: id,
@@ -63,38 +75,53 @@ export const useSelectionStore = create<SelectionState>()((set) => ({
       assetClass,
       timeframe: assetClass === 'stock' ? '1D' : s.timeframe,
     })),
+
   setTimeframe: (timeframe) => set({ timeframe }),
-  setTab: (tab) =>
-    set((s) => ({
-      tab,
-      detailOpen: false,
-      deskNav: deskNavForTab(tab, s.deskNav),
-    })),
-  setDeskNav: (deskNav) =>
+
+  setDestination: (dest) =>
     set({
-      deskNav,
+      destination: dest,
+      tab: dest,
+      deskNav: dest,
       detailOpen: false,
-      tab:
-        deskNav === 'market'
-          ? 'markets'
-          : deskNav === 'trading'
-            ? 'trade'
-            : 'wallet',
     }),
+
+  setTab: (tab) => {
+    const dest = normalizeDestination(tab)
+    set({
+      destination: dest,
+      tab: dest,
+      deskNav: dest,
+      detailOpen: false,
+    })
+  },
+
+  setDeskNav: (nav) => {
+    const dest = normalizeDestination(nav)
+    set({
+      destination: dest,
+      tab: dest,
+      deskNav: dest,
+      detailOpen: false,
+    })
+  },
+
   setExploreFilter: (exploreFilter) => set({ exploreFilter }),
   setDetailOpen: (detailOpen) => set({ detailOpen }),
+
   openAsset: (id, symbol, assetClass) =>
     set((s) => {
-      const desktop =
-        typeof window !== 'undefined' && window.matchMedia('(min-width: 650px)').matches
+      const isDesktop =
+        typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
       return {
         selectedId: id,
         selectedSymbol: symbol,
         assetClass,
         timeframe: assetClass === 'stock' ? '1D' : s.timeframe,
-        detailOpen: !desktop,
-        tab: desktop ? 'trade' : s.tab,
-        deskNav: desktop ? 'trading' : s.deskNav,
+        detailOpen: !isDesktop,
+        destination: isDesktop ? 'trade' : s.destination,
+        tab: isDesktop ? 'trade' : s.tab,
+        deskNav: isDesktop ? 'trade' : s.deskNav,
       }
     }),
 }))
@@ -108,7 +135,7 @@ interface WatchlistState {
 export const useWatchlistStore = create<WatchlistState>()(
   persist(
     (set, get) => ({
-      ids: ['bitcoin', 'ethereum', 'AAPL', 'NVDA'],
+      ids: ['bitcoin', 'ethereum', 'solana', 'AAPL', 'NVDA'],
       toggle: (id) =>
         set((s) => ({
           ids: s.ids.includes(id) ? s.ids.filter((x) => x !== id) : [...s.ids, id],
@@ -133,12 +160,12 @@ export const useCustomListStore = create<CustomListState>()(
       items: [],
       add: (item) => {
         const symbol = item.symbol.trim().toUpperCase()
-        if (!symbol) return 'Symbol required'
-        if (!item.name.trim()) return 'Name required'
-        if (!Number.isFinite(item.price) || item.price <= 0) return 'Valid price required'
+        if (!symbol) return 'Stock symbol is required'
+        if (!item.name.trim()) return 'Company or asset name is required'
+        if (!Number.isFinite(item.price) || item.price <= 0) return 'Please enter a valid positive price'
         const id = item.id ?? `custom-${symbol.toLowerCase()}`
         if (get().items.some((x) => x.id === id || x.symbol === symbol)) {
-          return 'Symbol already in your list'
+          return `${symbol} is already in your custom list`
         }
         const row: MarketSymbol = {
           id,
@@ -186,9 +213,9 @@ export interface LedgerEntry {
   balanceAfter: number
   at: number
   note?: string
+  realizedPnl?: number
 }
 
-/** @deprecated use LedgerEntry — kept as alias for trade-shaped rows */
 export type Trade = LedgerEntry
 
 interface PaperState {
@@ -197,7 +224,8 @@ interface PaperState {
   positions: Position[]
   trades: LedgerEntry[]
   hydrateForUser: (userId: string) => void
-  addMoney: (usdAmount: number) => string | null
+  addMoney: (usdAmount: number, note?: string) => string | null
+  claimStarterPack: () => void
   buy: (symbol: string, assetClass: AssetClass, qty: number, price: number) => string | null
   sell: (symbol: string, qty: number, price: number) => string | null
   reset: () => void
@@ -243,11 +271,12 @@ function loadPaper(userId: string): Pick<PaperState, 'cash' | 'positions' | 'tra
         balanceAfter: typeof t.balanceAfter === 'number' ? t.balanceAfter : 0,
         at: t.at ?? Date.now(),
         note: t.note,
+        realizedPnl: t.realizedPnl,
       } satisfies LedgerEntry
     })
     return {
-      cash: typeof parsed.cash === 'number' ? parsed.cash : START_CASH,
-      positions: parsed.positions ?? [],
+      cash: typeof parsed.cash === 'number' && Number.isFinite(parsed.cash) ? parsed.cash : START_CASH,
+      positions: Array.isArray(parsed.positions) ? parsed.positions : [],
       trades,
     }
   } catch {
@@ -267,6 +296,7 @@ export const usePaperStore = create<PaperState>()((set, get) => ({
   cash: START_CASH,
   positions: [],
   trades: [],
+
   hydrateForUser: (userId) => {
     const prev = get().userId
     if (prev && prev !== userId) {
@@ -279,40 +309,60 @@ export const usePaperStore = create<PaperState>()((set, get) => ({
     const next = loadPaper(userId)
     set({ userId, ...next })
   },
-  addMoney: (usdAmount) => {
+
+  claimStarterPack: () => {
+    const { userId, cash } = get()
+    if (!userId || cash > 0) return
+    // Default starter pack: $1,000 (~₹83,500)
+    get().addMoney(1000, 'Welcome demo grant')
+  },
+
+  addMoney: (usdAmount, note) => {
     const { userId, cash, positions, trades } = get()
-    if (!userId) return 'Please log in'
-    if (!Number.isFinite(usdAmount) || usdAmount <= 0) return 'Enter a valid amount'
-    if (usdAmount > 1_000_000) return 'Demo max exceeded'
-    const balanceAfter = cash + usdAmount
+    if (!userId) return 'Please log in to your demo account'
+    if (!Number.isFinite(usdAmount) || usdAmount <= 0) return 'Please enter a valid deposit amount'
+    if (usdAmount > 1_000_000) return 'Maximum demo deposit per transaction is $1,000,000'
+
+    const cleanAmount = Math.round(usdAmount * 100) / 100
+    const balanceAfter = Math.round((cash + cleanAmount) * 100) / 100
+
     const entry: LedgerEntry = {
       id: crypto.randomUUID(),
       type: 'deposit',
       symbol: 'CASH',
       qty: 1,
-      price: usdAmount,
-      cashDelta: usdAmount,
+      price: cleanAmount,
+      cashDelta: cleanAmount,
       balanceAfter,
       at: Date.now(),
-      note: 'Wallet top-up (demo)',
+      note: note ?? 'Virtual wallet top-up',
     }
+
     const next = {
       cash: balanceAfter,
       positions,
-      trades: [entry, ...trades].slice(0, 200),
+      trades: [entry, ...trades].slice(0, 300),
     }
+
     savePaper(userId, next)
     set(next)
     return null
   },
+
   buy: (symbol, assetClass, qty, price) => {
-    const cost = qty * price
     const { userId, cash, positions, trades } = get()
-    if (!userId) return 'Please log in'
-    if (qty <= 0 || price <= 0) return 'Invalid quantity'
-    if (cost > cash) return 'Insufficient cash — add money to wallet'
+    if (!userId) return 'Please log in to your demo account'
+    if (!Number.isFinite(qty) || qty <= 0) return 'Quantity must be greater than zero'
+    if (!Number.isFinite(price) || price <= 0) return 'Market price is currently unavailable'
+
+    const cost = qty * price
+    if (cost > cash + 0.0001) {
+      return `Insufficient paper cash. You need $${cost.toFixed(2)} but have $${cash.toFixed(2)}.`
+    }
+
     const existing = positions.find((p) => p.symbol === symbol)
     let nextPositions: Position[]
+
     if (existing) {
       const totalQty = existing.qty + qty
       const avgPrice = (existing.avgPrice * existing.qty + cost) / totalQty
@@ -325,7 +375,8 @@ export const usePaperStore = create<PaperState>()((set, get) => ({
         { id: symbol, symbol, assetClass, qty, avgPrice: price },
       ]
     }
-    const balanceAfter = cash - cost
+
+    const balanceAfter = Math.max(0, Math.round((cash - cost) * 100) / 100)
     const entry: LedgerEntry = {
       id: crypto.randomUUID(),
       type: 'buy',
@@ -336,48 +387,65 @@ export const usePaperStore = create<PaperState>()((set, get) => ({
       balanceAfter,
       at: Date.now(),
     }
+
     const next = {
       cash: balanceAfter,
       positions: nextPositions,
-      trades: [entry, ...trades].slice(0, 200),
+      trades: [entry, ...trades].slice(0, 300),
     }
+
     savePaper(userId, next)
     set(next)
     return null
   },
+
   sell: (symbol, qty, price) => {
     const { userId, cash, positions, trades } = get()
-    if (!userId) return 'Please log in'
+    if (!userId) return 'Please log in to your demo account'
     const existing = positions.find((p) => p.symbol === symbol)
-    if (!existing) return 'No position'
-    if (qty <= 0 || price <= 0) return 'Invalid quantity'
-    if (qty > existing.qty) return 'Not enough shares'
-    const proceeds = qty * price
-    const remaining = existing.qty - qty
+    if (!existing) return `You don't own any ${symbol} to sell`
+    if (!Number.isFinite(qty) || qty <= 0) return 'Quantity must be greater than zero'
+    if (!Number.isFinite(price) || price <= 0) return 'Market price is currently unavailable'
+
+    if (qty > existing.qty + 1e-9) {
+      return `Cannot sell ${qty} units. You only hold ${existing.qty.toFixed(4)} ${symbol}.`
+    }
+
+    const effectiveQty = Math.min(qty, existing.qty)
+    const proceeds = effectiveQty * price
+    const realizedPnl = (price - existing.avgPrice) * effectiveQty
+    const remaining = existing.qty - effectiveQty
+
     const nextPositions =
-      remaining <= 1e-10
+      remaining <= 1e-8
         ? positions.filter((p) => p.symbol !== symbol)
         : positions.map((p) => (p.symbol === symbol ? { ...p, qty: remaining } : p))
-    const balanceAfter = cash + proceeds
+
+    const balanceAfter = Math.round((cash + proceeds) * 100) / 100
     const entry: LedgerEntry = {
       id: crypto.randomUUID(),
       type: 'sell',
       symbol,
-      qty,
+      qty: effectiveQty,
       price,
       cashDelta: proceeds,
       balanceAfter,
       at: Date.now(),
+      realizedPnl,
+      note: realizedPnl >= 0 ? `Gain: +$${realizedPnl.toFixed(2)}` : `Loss: -$${Math.abs(realizedPnl).toFixed(2)}`,
     }
+
     const next = {
       cash: balanceAfter,
       positions: nextPositions,
-      trades: [entry, ...trades].slice(0, 200),
+      trades: [entry, ...trades].slice(0, 300),
     }
+
     savePaper(userId, next)
     set(next)
     return null
   },
+
   reset: () => {
     const { userId } = get()
     const next = { cash: START_CASH, positions: [] as Position[], trades: [] as LedgerEntry[] }

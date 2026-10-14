@@ -2,36 +2,39 @@ import {
   Activity,
   ArrowLeftRight,
   CandlestickChart,
+  LayoutDashboard,
+  PieChart,
   UserRound,
-  Wallet,
 } from 'lucide-react'
-import { useSelectionStore } from '../store/appStore'
+import { useSelectionStore, type AppDestination } from '../store/appStore'
 
-const TABS = [
-  { id: 'markets' as const, label: 'Markets', icon: CandlestickChart },
-  { id: 'trade' as const, label: 'Trade', icon: ArrowLeftRight },
-  { id: 'wallet' as const, label: 'Wallet', icon: Wallet },
-  { id: 'activity' as const, label: 'Activity', icon: Activity },
-  { id: 'profile' as const, label: 'Profile', icon: UserRound },
+const TABS: { id: AppDestination; label: string; icon: typeof LayoutDashboard }[] = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'markets', label: 'Markets', icon: CandlestickChart },
+  { id: 'trade', label: 'Trade', icon: ArrowLeftRight },
+  { id: 'portfolio', label: 'Holdings', icon: PieChart },
+  { id: 'activity', label: 'Ledger', icon: Activity },
+  { id: 'profile', label: 'Profile', icon: UserRound },
 ]
 
 export function AppBottomNav() {
-  const tab = useSelectionStore((s) => s.tab)
-  const setTab = useSelectionStore((s) => s.setTab)
+  const destination = useSelectionStore((s) => s.destination)
+  const setDestination = useSelectionStore((s) => s.setDestination)
 
   return (
-    <nav className="mob-nav" aria-label="Main">
+    <nav className="mob-nav" aria-label="Mobile Bottom Navigation">
       {TABS.map((t) => {
         const Icon = t.icon
-        const active = tab === t.id
+        const active = destination === t.id
         return (
           <button
             key={t.id}
             type="button"
             className={active ? 'mob-nav-item active' : 'mob-nav-item'}
-            onClick={() => setTab(t.id)}
+            onClick={() => setDestination(t.id)}
+            aria-current={active ? 'page' : undefined}
           >
-            <Icon size={24} strokeWidth={active ? 2.25 : 1.7} />
+            <Icon size={20} strokeWidth={active ? 2.5 : 1.7} />
             <span>{t.label}</span>
           </button>
         )

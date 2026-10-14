@@ -1,28 +1,25 @@
 import { useMemo, useState } from 'react'
-import { ArrowDownLeft, ArrowUpRight, Plus } from 'lucide-react'
+import { History } from 'lucide-react'
 import { formatQty } from '../lib/format'
 import { useMoney } from '../hooks/useMoney'
-import { usePaperStore, type LedgerEntry } from '../store/appStore'
-import { ScreenHeader } from './ScreenHeader'
+import { usePaperStore } from '../store/appStore'
 
 type Filter = 'all' | 'trades' | 'transfers'
 
-function dayLabel(at: number) {
+function formatDateTime(at: number) {
   const d = new Date(at)
-  const today = new Date()
-  const yest = new Date()
-  yest.setDate(today.getDate() - 1)
-  if (d.toDateString() === today.toDateString()) return 'Today'
-  if (d.toDateString() === yest.toDateString()) return 'Yesterday'
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-function timeLabel(at: number) {
-  return new Date(at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 export function ActivityScreen() {
   const trades = usePaperStore((s) => s.trades)
+  const cash = usePaperStore((s) => s.cash)
   const { money } = useMoney()
   const [filter, setFilter] = useState<Filter>('all')
 
@@ -32,27 +29,59 @@ export function ActivityScreen() {
     return trades
   }, [trades, filter])
 
-  const groups = useMemo(() => {
-    const map = new Map<string, LedgerEntry[]>()
-    for (const t of filtered) {
-      const key = dayLabel(t.at)
-      const list = map.get(key) ?? []
-      list.push(t)
-      map.set(key, list)
-    }
-    return [...map.entries()]
-  }, [filtered])
+  const totalDeposits = useMemo(() => {
+    return trades.filter((t) => t.type === 'deposit').reduce((sum, t) => sum + t.cashDelta, 0)
+  }, [trades])
+
+  const totalTradesCount = useMemo(() => {
+    return trades.filter((t) => t.type === 'buy' || t.type === 'sell').length
+  }, [trades])
 
   return (
-    <div className="mob-screen">
-      <ScreenHeader title="Activity" />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h1 style={{ fontSize: '2rem' }}>TRANSACTION LEDGER & ACTIVITY</h1>
+          <p style={{ fontSize: '0.88rem' }}>Chronological audit trail of all paper trades and virtual wallet deposits.</p>
+        </div>
+      </div>
 
-      <div className="mob-chips">
+      {/* Summary KPI Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '1rem 1.25rem' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700 }}>
+            Current Cash Balance
+          </span>
+          <strong className="mono" style={{ fontSize: '1.4rem', display: 'block', marginTop: '0.25rem', color: 'var(--ink)' }}>
+            {money(cash)}
+          </strong>
+        </div>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '1rem 1.25rem' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700 }}>
+            Total Virtual Funded
+          </span>
+          <strong className="mono" style={{ fontSize: '1.4rem', display: 'block', marginTop: '0.25rem', color: 'var(--up)' }}>
+            {money(totalDeposits)}
+          </strong>
+        </div>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '1rem 1.25rem' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700 }}>
+            Executed Trades Count
+          </span>
+          <strong className="mono" style={{ fontSize: '1.4rem', display: 'block', marginTop: '0.25rem' }}>
+            {totalTradesCount}
+          </strong>
+        </div>
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="market-filter-chips">
         {(
           [
-            ['all', 'All'],
-            ['trades', 'Trades'],
-            ['transfers', 'Transfers'],
+            ['all', 'All Activity'],
+            ['trades', 'Trades Only'],
+            ['transfers', 'Deposits & Funding'],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -66,51 +95,63 @@ export function ActivityScreen() {
         ))}
       </div>
 
-      {groups.length === 0 ? (
-        <div className="mob-empty">
-          <p>No activity yet</p>
+      {/* Ledger Table */}
+      {filtered.length === 0 ? (
+        <div className="gw-empty-card">
+          <History size={36} style={{ color: 'var(--muted)' }} />
+          <div>
+            <p style={{ fontWeight: 600, color: 'var(--ink)' }}>No entries in ledger</p>
+            <p style={{ fontSize: '0.88rem' }}>Transactions will appear here when you add money or execute a trade.</p>
+          </div>
         </div>
       ) : (
-        groups.map(([day, rows]) => (
-          <div key={day} className="mob-day-group">
-            <h3>{day}</h3>
-            {rows.map((t) => {
-              const inflow = t.cashDelta >= 0
-              return (
-                <div key={t.id} className="mob-activity-row">
-                  <div className={inflow ? 'mob-act-icon in' : 'mob-act-icon out'}>
-                    {t.type === 'deposit' ? (
-                      <Plus size={16} />
-                    ) : inflow ? (
-                      <ArrowDownLeft size={16} />
-                    ) : (
-                      <ArrowUpRight size={16} />
-                    )}
-                  </div>
-                  <div className="mob-asset-main">
-                    <b>
-                      {t.type === 'deposit'
-                        ? 'Added money'
-                        : t.type === 'buy'
-                          ? `Bought ${t.symbol}`
-                          : `Sold ${t.symbol}`}
-                    </b>
-                    <small>{timeLabel(t.at)}</small>
-                  </div>
-                  <div className="mob-asset-meta">
-                    <b className={inflow ? 'mono up' : 'mono down'}>
-                      {inflow ? '+' : '−'}
-                      {money(Math.abs(t.cashDelta))}
-                    </b>
-                    <small className="mono">
-                      {t.type === 'deposit' ? 'Wallet' : `${formatQty(t.qty)} ${t.symbol}`}
-                    </small>
-                  </div>
-                </div>
-              )
-            })}
+        <div className="ledger-table">
+          <div className="ledger-head">
+            <span>Date & Time</span>
+            <span>Type</span>
+            <span>Transaction Details</span>
+            <span style={{ textAlign: 'right' }}>Cash Impact</span>
+            <span style={{ textAlign: 'right' }}>Balance After</span>
           </div>
-        ))
+          {filtered.map((t) => {
+            const inflow = t.cashDelta >= 0
+            return (
+              <div key={t.id} className="ledger-row">
+                <span className="muted" style={{ fontSize: '0.8rem' }}>
+                  {formatDateTime(t.at)}
+                </span>
+                <div>
+                  <span className={`ledger-badge ${t.type}`}>
+                    {t.type}
+                  </span>
+                </div>
+                <div>
+                  {t.type === 'deposit' ? (
+                    <span>{t.note ?? 'Virtual wallet top-up'}</span>
+                  ) : (
+                    <div>
+                      <strong style={{ display: 'block', color: 'var(--ink)' }}>
+                        {t.type === 'buy' ? 'Bought' : 'Sold'} {formatQty(t.qty)} {t.symbol}
+                      </strong>
+                      <small style={{ color: 'var(--secondary)', fontSize: '0.78rem' }}>
+                        Fill Price: {money(t.price)} {t.note ? `· ${t.note}` : ''}
+                      </small>
+                    </div>
+                  )}
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <b className={`mono ${inflow ? 'up' : 'down'}`}>
+                    {inflow ? '+' : '−'}
+                    {money(Math.abs(t.cashDelta))}
+                  </b>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span className="mono" style={{ fontWeight: 600 }}>{money(t.balanceAfter)}</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )

@@ -24,7 +24,6 @@ export function DesktopTradingView({ current, symbols }: Props) {
   const assetClass = useSelectionStore((s) => s.assetClass)
   const timeframe = useSelectionStore((s) => s.timeframe)
   const setTimeframe = useSelectionStore((s) => s.setTimeframe)
-  const setDeskNav = useSelectionStore((s) => s.setDeskNav)
   const watchIds = useWatchlistStore((s) => s.ids)
   const toggle = useWatchlistStore((s) => s.toggle)
   const { money, currency, convert, compact } = useMoney()
@@ -35,18 +34,18 @@ export function DesktopTradingView({ current, symbols }: Props) {
       if (selectedId.startsWith('custom-') && current) {
         const now = Math.floor(Date.now() / 1000)
         const base = current.price
-        return Array.from({ length: 40 }, (_, i) => {
-          const t = now - (39 - i) * 3600
-          const wobble = 1 + Math.sin(i / 3) * 0.01
+        return Array.from({ length: 45 }, (_, i) => {
+          const t = now - (44 - i) * 3600
+          const wobble = 1 + Math.sin(i / 3) * 0.015
           const close = base * wobble
-          const open = base * (1 + Math.cos(i / 4) * 0.008)
+          const open = base * (1 + Math.cos(i / 4) * 0.01)
           return {
             time: t,
             open,
-            high: Math.max(open, close) * 1.004,
-            low: Math.min(open, close) * 0.996,
+            high: Math.max(open, close) * 1.005,
+            low: Math.min(open, close) * 0.995,
             close,
-            volume: 1000 + i * 10,
+            volume: 1200 + i * 20,
           }
         })
       }
@@ -78,12 +77,14 @@ export function DesktopTradingView({ current, symbols }: Props) {
     (last
       ? { open: last.open, high: last.high, low: last.low, close: last.close, time: last.time }
       : null)
+
   const fmt = (v: number) =>
     v.toLocaleString(currency === 'INR' ? 'en-IN' : 'en-US', {
       style: 'currency',
       currency,
       maximumFractionDigits: 2,
     })
+
   const changePct = current?.changePct24h ?? 0
   const changeAbs = current?.change24h ?? 0
   const up = changePct >= 0
@@ -91,66 +92,80 @@ export function DesktopTradingView({ current, symbols }: Props) {
 
   return (
     <div className="desk-trading">
+      {/* Chart Pane Left */}
       <section className="desk-chart-pane">
+        {/* Asset Header */}
         <div className="desk-asset-head">
-          <button
-            type="button"
-            className="mob-icon-btn"
-            aria-label="Back to market"
-            onClick={() => setDeskNav('market')}
-          >
-            ←
-          </button>
           <div className="desk-asset-id">
-            <div className="mob-avatar">
+            <div className="desk-avatar-img">
               {current?.image ? (
-                <img src={current.image} alt="" />
+                <img src={current.image} alt={current.symbol} />
               ) : (
                 (current?.symbol ?? '??').slice(0, 2)
               )}
             </div>
-            <div>
+            <div className="desk-asset-title">
               <b>{current?.name ?? selectedSymbol}</b>
-              <small>{selectedSymbol}</small>
+              <small>
+                {selectedSymbol} · <span style={{ textTransform: 'capitalize' }}>{current?.assetClass ?? assetClass}</span>
+              </small>
             </div>
           </div>
+
           <button
             type="button"
-            className={watched ? 'mob-star on' : 'mob-star'}
+            className="icon-btn"
             onClick={() => current && toggle(current.id)}
-            aria-label="Watchlist"
+            aria-label={watched ? 'Remove from Watchlist' : 'Add to Watchlist'}
+            title={watched ? 'Starred in Watchlist' : 'Add to Watchlist'}
+            style={{ color: watched ? 'var(--accent)' : 'var(--muted)' }}
           >
             <Star size={18} fill={watched ? 'currentColor' : 'none'} />
           </button>
         </div>
 
+        {/* Live Price Display & 24h Movement */}
         <div className="desk-price-block">
           <strong className="mono">{money(current?.price ?? 0)}</strong>
-          <span className={up ? 'mob-change up' : 'mob-change down'}>
+          <span className={`change-pill ${up ? 'up' : 'down'} mono`}>
             {up ? <ArrowUpRight size={16} /> : <ArrowDownLeft size={16} />}
-            {money(Math.abs(changeAbs))} ({formatPct(changePct)})
+            {money(Math.abs(changeAbs))} ({formatPct(changePct)}) 24h
           </span>
         </div>
 
+        {/* Timeframe Controls */}
         <div className="desk-tf-row">
-          <div className="tf-group">
+          <div className="tf-group" role="tablist" aria-label="Chart timeframes">
             {TIMEFRAMES.map((tf) => (
               <button
                 key={tf}
                 type="button"
-                className={timeframe === tf ? 'tf active' : 'tf'}
+                className={timeframe === tf ? 'active' : ''}
                 onClick={() => setTimeframe(tf)}
                 disabled={assetClass === 'stock' && tf !== '1D'}
+                title={assetClass === 'stock' && tf !== '1D' ? 'Stocks feed provides daily interval' : `View ${tf} interval`}
               >
                 {tf}
               </button>
             ))}
           </div>
+
+          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.78rem', color: 'var(--secondary)' }}>
+            <span>O: <strong className="mono">{readout ? fmt(readout.open) : '—'}</strong></span>
+            <span>H: <strong className="mono">{readout ? fmt(readout.high) : '—'}</strong></span>
+            <span>L: <strong className="mono">{readout ? fmt(readout.low) : '—'}</strong></span>
+            <span>C: <strong className="mono">{readout ? fmt(readout.close) : '—'}</strong></span>
+          </div>
         </div>
 
+        {/* Candlestick & Volume Chart */}
         <div className="desk-chart">
-          {candlesQuery.isLoading && <div className="chart-status">Loading chart…</div>}
-          {candlesQuery.isError && <div className="chart-status error">Chart unavailable</div>}
+          {candlesQuery.isLoading && <div className="chart-status">Loading market candlesticks…</div>}
+          {candlesQuery.isError && (
+            <div className="chart-status" style={{ color: 'var(--down)' }}>
+              Primary feed delayed. Retrying live connection…
+            </div>
+          )}
           {displayCandles.length > 0 && (
             <TradingChart
               key={`${selectedId}-${currency}-${timeframe}-desk`}
@@ -160,30 +175,30 @@ export function DesktopTradingView({ current, symbols }: Props) {
           )}
         </div>
 
+        {/* Additional Market Statistics */}
         <div className="desk-stats-row">
           <div>
-            <span>Market cap</span>
+            <span>Market Capitalization</span>
             <b className="mono">{current?.marketCap ? compact(current.marketCap) : '—'}</b>
           </div>
           <div>
-            <span>Volume (24h)</span>
+            <span>24h Trading Volume</span>
             <b className="mono">
               {current?.volume ? formatCompact(current.volume, currency) : '—'}
             </b>
           </div>
           <div>
-            <span>Open</span>
-            <b className="mono">{readout ? fmt(readout.open) : '—'}</b>
+            <span>Interval High</span>
+            <b className="mono">{readout ? fmt(readout.high) : '—'}</b>
           </div>
           <div>
-            <span>High / Low</span>
-            <b className="mono">
-              {readout ? `${fmt(readout.high)} / ${fmt(readout.low)}` : '—'}
-            </b>
+            <span>Interval Low</span>
+            <b className="mono">{readout ? fmt(readout.low) : '—'}</b>
           </div>
         </div>
       </section>
 
+      {/* Order Panel Right */}
       <DesktopTradePanel current={current} symbols={symbols} />
     </div>
   )

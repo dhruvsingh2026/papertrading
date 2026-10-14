@@ -1,11 +1,10 @@
 import { useMemo, useState } from 'react'
-import { ArrowDownUp, History } from 'lucide-react'
+import { ArrowDown, ArrowUp, History } from 'lucide-react'
 import type { MarketSymbol } from '../types/market'
 import { formatQty } from '../lib/format'
 import { useMoney } from '../hooks/useMoney'
 import { usePaperStore, useSelectionStore } from '../store/appStore'
 import { PaymentDemo } from './PaymentDemo'
-import { ScreenHeader } from './ScreenHeader'
 
 interface Props {
   symbols: MarketSymbol[]
@@ -14,9 +13,10 @@ interface Props {
 
 export function TradeScreen({ symbols, current }: Props) {
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState('2000')
   const [error, setError] = useState<string | null>(null)
   const [payOpen, setPayOpen] = useState(false)
+
   const buy = usePaperStore((s) => s.buy)
   const sell = usePaperStore((s) => s.sell)
   const cash = usePaperStore((s) => s.cash)
@@ -24,98 +24,106 @@ export function TradeScreen({ symbols, current }: Props) {
   const selectedSymbol = useSelectionStore((s) => s.selectedSymbol)
   const assetClass = useSelectionStore((s) => s.assetClass)
   const setSelection = useSelectionStore((s) => s.setSelection)
-  const setTab = useSelectionStore((s) => s.setTab)
+  const setDestination = useSelectionStore((s) => s.setDestination)
   const { money, currency, usdInr } = useMoney()
 
   const price = current?.price ?? 0
   const position = positions.find((p) => p.symbol === selectedSymbol)
+  const ownedQty = position?.qty ?? 0
   const displayAmount = Number(amount)
-  const usdSpend =
-    currency === 'INR' && side === 'buy'
-      ? displayAmount / usdInr
-      : side === 'buy'
-        ? displayAmount
-        : displayAmount * price
 
-  const qty =
-    side === 'buy'
-      ? price > 0
-        ? (currency === 'INR' ? displayAmount / usdInr : displayAmount) / price
-        : 0
-      : displayAmount
+  const usdCost = useMemo(() => {
+    if (!Number.isFinite(displayAmount) || displayAmount <= 0) return 0
+    return currency === 'INR' ? displayAmount / usdInr : displayAmount
+  }, [displayAmount, currency, usdInr])
 
-  const youGetLabel = useMemo(() => {
-    if (!Number.isFinite(qty) || qty <= 0) return '—'
-    if (side === 'buy') return `${formatQty(qty)} ${selectedSymbol}`
-    return money(qty * price)
-  }, [qty, side, selectedSymbol, price, money])
+  const targetQty = useMemo(() => {
+    if (price <= 0 || usdCost <= 0) return 0
+    return side === 'buy' ? usdCost / price : displayAmount
+  }, [side, price, usdCost, displayAmount])
 
-  const youPayLabel = side === 'buy' ? `${currency} amount` : `${selectedSymbol} qty`
+  const effectiveTotalUsd = useMemo(() => {
+    return side === 'buy' ? usdCost : targetQty * price
+  }, [side, usdCost, targetQty, price])
 
-  const openReview = () => {
-    if (!current || price <= 0) {
-      setError('Pick a market first')
-      return
-    }
-    if (!Number.isFinite(displayAmount) || displayAmount <= 0) {
-      setError('Enter a valid amount')
-      return
-    }
+  const validate = (): string | null => {
+    if (!current || price <= 0) return 'Market quote is unavailable'
+    if (!Number.isFinite(displayAmount) || displayAmount <= 0) return 'Enter a valid amount'
     if (side === 'buy') {
-      const cost = qty * price
-      if (cost > cash) {
-        setError('Insufficient balance — add money in Profile')
-        return
+      if (effectiveTotalUsd > cash + 0.0001) {
+        return `Insufficient cash. Need ${money(effectiveTotalUsd)} but available is ${money(cash)}.`
       }
-    } else if (!position || qty > position.qty) {
-      setError('Not enough holdings')
-      return
+    } else {
+      if (!position || ownedQty <= 0) return `You don't own any ${selectedSymbol} to sell.`
+      if (targetQty > ownedQty + 1e-8) {
+        return `Cannot sell ${formatQty(targetQty)} units. You only have ${formatQty(ownedQty)} ${selectedSymbol}.`
+      }
     }
-    setError(null)
-    setPayOpen(true)
+    return null
   }
 
-  const complete = () => {
+  const handleOpenReview = () => {
+    const err = validate()
+    setError(err)
+    if (!err) setPayOpen(true)
+  }
+
+  const handleComplete = () => {
     if (!current) return
     const err =
       side === 'buy'
-        ? buy(selectedSymbol, assetClass, qty, price)
-        : sell(selectedSymbol, qty, price)
+        ? buy(selectedSymbol, assetClass, targetQty, price)
+        : sell(selectedSymbol, targetQty, price)
+
     setError(err)
     if (!err) {
       setAmount('')
-      setTab('wallet')
+      setDestination('portfolio')
     }
   }
 
   return (
     <div className="mob-screen">
-      <ScreenHeader title="Trade" />
-      <div className="mob-trade-tools">
-        <button type="button" className="mob-icon-btn" onClick={() => setTab('activity')}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 style={{ fontSize: '1.75rem' }}>SIMULATED TRADE</h1>
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={() => setDestination('activity')}
+          title="Activity Ledger"
+        >
           <History size={18} />
         </button>
       </div>
 
-      <div className="mob-segment">
+      {/* Side Selector */}
+      <div className="desk-buy-sell" role="tablist">
         <button
           type="button"
-          className={side === 'buy' ? 'active' : undefined}
-          onClick={() => setSide('buy')}
+          className={side === 'buy' ? 'active buy' : ''}
+          onClick={() => {
+            setSide('buy')
+            setError(null)
+          }}
         >
-          Buy
+          <ArrowDown size={16} /> BUY
         </button>
         <button
           type="button"
-          className={side === 'sell' ? 'active sell' : undefined}
-          onClick={() => setSide('sell')}
+          className={side === 'sell' ? 'active sell' : ''}
+          onClick={() => {
+            setSide('sell')
+            setError(null)
+            if (ownedQty > 0) setAmount(String(ownedQty))
+          }}
         >
-          Sell
+          <ArrowUp size={16} /> SELL
         </button>
       </div>
 
-      <label className="field mob-select">
-        <span>Asset</span>
+      {/* Asset Selector Dropdown */}
+      <label className="field">
+        <span>Select Instrument</span>
         <select
           value={current?.id ?? ''}
           onChange={(e) => {
@@ -123,73 +131,60 @@ export function TradeScreen({ symbols, current }: Props) {
             if (s) setSelection(s.id, s.symbol, s.assetClass)
           }}
         >
-          {symbols.slice(0, 80).map((s) => (
+          {symbols.map((s) => (
             <option key={s.id} value={s.id}>
-              {s.symbol} — {s.name}
+              {s.symbol} — {s.name} ({s.assetClass})
             </option>
           ))}
         </select>
       </label>
 
-      <div className="mob-trade-card">
-        <div className="mob-trade-block">
-          <div className="mob-trade-block-top">
-            <span>{side === 'buy' ? 'You pay' : 'You sell'}</span>
-            <small>
-              Bal:{' '}
-              {side === 'buy'
-                ? money(cash)
-                : `${formatQty(position?.qty ?? 0)} ${selectedSymbol}`}
-            </small>
-          </div>
-          <div className="mob-trade-input-row">
-            <input
-              className="mono"
-              inputMode="decimal"
-              placeholder="0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-            <span className="mob-chip">{side === 'buy' ? currency : selectedSymbol}</span>
-          </div>
-          <small className="muted">{youPayLabel}</small>
+      {/* Interactive Order Card */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <span style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>
+            {side === 'buy' ? `Budget (${currency})` : `Units to sell (${selectedSymbol})`}
+          </span>
+          <span style={{ fontSize: '0.82rem', color: 'var(--secondary)' }}>
+            Available: <strong>{side === 'buy' ? money(cash) : `${formatQty(ownedQty)} ${selectedSymbol}`}</strong>
+          </span>
         </div>
 
-        <button
-          type="button"
-          className="mob-swap-flip"
-          aria-label="Flip"
-          onClick={() => setSide((s) => (s === 'buy' ? 'sell' : 'buy'))}
-        >
-          <ArrowDownUp size={18} />
-        </button>
+        <div className="desk-amount-box">
+          <input
+            className="mono"
+            inputMode="decimal"
+            placeholder="0"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          <span>{side === 'buy' ? currency : selectedSymbol}</span>
+        </div>
 
-        <div className="mob-trade-block">
-          <div className="mob-trade-block-top">
-            <span>{side === 'buy' ? 'You get' : 'You receive'}</span>
-            <small>Price {money(price)}</small>
-          </div>
-          <div className="mob-trade-input-row">
-            <strong className="mono mob-get">{youGetLabel}</strong>
-            <span className="mob-chip">{side === 'buy' ? selectedSymbol : currency}</span>
-          </div>
-        </div>
-      </div>
+        {side === 'sell' && ownedQty > 0 && (
+          <button
+            type="button"
+            className="linkish"
+            onClick={() => setAmount(String(ownedQty))}
+            style={{ alignSelf: 'flex-end', fontSize: '0.78rem' }}
+          >
+            Sell All ({formatQty(ownedQty)} {selectedSymbol})
+          </button>
+        )}
 
-      <div className="mob-trade-meta">
-        <div>
-          <span>Est. total</span>
-          <b className="mono">
-            {side === 'buy' ? money(Number.isFinite(usdSpend) ? usdSpend : 0) : money(qty * price)}
-          </b>
-        </div>
-        <div>
-          <span>Network fee</span>
-          <b>Demo · ₹0</b>
-        </div>
-        <div>
-          <span>Slippage</span>
-          <b>Paper fill</b>
+        <div style={{ padding: '0.75rem', background: 'var(--surface-2)', borderRadius: 'var(--radius-sm)', display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: 'var(--secondary)' }}>Market Price:</span>
+            <strong className="mono">{price > 0 ? money(price) : '—'}</strong>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: 'var(--secondary)' }}>Target Units:</span>
+            <strong className="mono">{targetQty > 0 ? `${formatQty(targetQty)} ${selectedSymbol}` : '—'}</strong>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '0.35rem' }}>
+            <span style={{ color: 'var(--secondary)' }}>Est. Total:</span>
+            <strong className="mono" style={{ color: 'var(--ink)' }}>{effectiveTotalUsd > 0 ? money(effectiveTotalUsd) : '—'}</strong>
+          </div>
         </div>
       </div>
 
@@ -197,23 +192,24 @@ export function TradeScreen({ symbols, current }: Props) {
 
       <button
         type="button"
-        className={side === 'buy' ? 'btn primary large full' : 'btn danger large full'}
-        onClick={openReview}
+        className={`btn ${side === 'buy' ? 'primary' : 'danger'} full large`}
+        onClick={handleOpenReview}
       >
-        Review {side}
+        Review & Place Paper {side.toUpperCase()}
       </button>
-      <p className="mob-footnote">Demo payment · no real money</p>
+
+      <p className="disclaimer" style={{ textAlign: 'center' }}>
+        Paper-trading simulation · No real money debited or invested
+      </p>
 
       <PaymentDemo
         open={payOpen}
         side={side}
         symbol={selectedSymbol}
-        amountLabel={
-          side === 'buy' ? money(qty * price) : money(qty * price)
-        }
-        qtyLabel={formatQty(qty)}
+        amountLabel={money(effectiveTotalUsd)}
+        qtyLabel={formatQty(targetQty)}
         onClose={() => setPayOpen(false)}
-        onSuccess={complete}
+        onSuccess={handleComplete}
       />
     </div>
   )

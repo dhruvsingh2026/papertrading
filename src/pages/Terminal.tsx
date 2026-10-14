@@ -10,6 +10,7 @@ import { AssetDetail } from '../components/AssetDetail'
 import { DesktopTopNav } from '../components/DesktopTopNav'
 import { DesktopTradingView } from '../components/DesktopTradingView'
 import { MarketsScreen } from '../components/MarketsScreen'
+import { PortfolioView } from '../components/PortfolioView'
 import { ProfileScreen } from '../components/ProfileScreen'
 import { TradeScreen } from '../components/TradeScreen'
 import { WalletScreen } from '../components/WalletScreen'
@@ -29,12 +30,11 @@ export default function Terminal() {
   const isDesktop = useIsDesktop()
   const session = useAuthStore((s) => s.session)
   const hydrateForUser = usePaperStore((s) => s.hydrateForUser)
-  const tab = useSelectionStore((s) => s.tab)
-  const deskNav = useSelectionStore((s) => s.deskNav)
+  const destination = useSelectionStore((s) => s.destination)
   const exploreFilter = useSelectionStore((s) => s.exploreFilter)
   const selectedId = useSelectionStore((s) => s.selectedId)
   const detailOpen = useSelectionStore((s) => s.detailOpen)
-  const setTab = useSelectionStore((s) => s.setTab)
+  const setDestination = useSelectionStore((s) => s.setDestination)
   const watchIds = useWatchlistStore((s) => s.ids)
   const customItems = useCustomListStore((s) => s.items)
 
@@ -55,25 +55,15 @@ export default function Terminal() {
     staleTime: 5 * 60_000,
   })
 
-  const crypto = cryptoQuery.data ?? []
-  const stocks = stocksQuery.data ?? []
+  const crypto = useMemo(() => cryptoQuery.data ?? [], [cryptoQuery.data])
+  const stocks = useMemo(() => stocksQuery.data ?? [], [stocksQuery.data])
   const all = useMemo(
     () => [...customItems, ...crypto, ...stocks],
     [customItems, crypto, stocks],
   )
 
-  const q = query.trim().toLowerCase()
-  const filterQ = <T extends { symbol: string; name: string; id: string }>(list: T[]) =>
-    q
-      ? list.filter(
-          (s) =>
-            s.symbol.toLowerCase().includes(q) ||
-            s.name.toLowerCase().includes(q) ||
-            s.id.toLowerCase().includes(q),
-        )
-      : list
-
   const marketItems = useMemo(() => {
+    const q = query.trim().toLowerCase()
     let base =
       exploreFilter === 'crypto'
         ? crypto
@@ -81,22 +71,46 @@ export default function Terminal() {
           ? stocks
           : exploreFilter === 'mine'
             ? customItems
-            : exploreFilter === 'gainers'
-              ? [...all].sort((a, b) => b.changePct24h - a.changePct24h)
-              : exploreFilter === 'losers'
-                ? [...all].sort((a, b) => a.changePct24h - b.changePct24h)
-                : all
+            : exploreFilter === 'watchlist'
+              ? all.filter((s) => watchIds.includes(s.id))
+              : exploreFilter === 'gainers'
+                ? [...all].sort((a, b) => b.changePct24h - a.changePct24h)
+                : exploreFilter === 'losers'
+                  ? [...all].sort((a, b) => a.changePct24h - b.changePct24h)
+                  : all
+
     if (exploreFilter === 'all') {
       const starred = all.filter((s) => watchIds.includes(s.id))
       base = starred.length ? [...starred, ...all.filter((s) => !watchIds.includes(s.id))] : all
     }
-    return filterQ(base)
-  }, [all, crypto, stocks, customItems, exploreFilter, watchIds, q])
+
+    return q
+      ? base.filter(
+          (s) =>
+            s.symbol.toLowerCase().includes(q) ||
+            s.name.toLowerCase().includes(q) ||
+            s.id.toLowerCase().includes(q),
+        )
+      : base
+  }, [all, crypto, stocks, customItems, exploreFilter, watchIds, query])
 
   const current = all.find((s) => s.id === selectedId) ?? crypto[0] ?? customItems[0]
 
   const feedWarn = (cryptoQuery.isError || stocksQuery.isError) && (
-    <p className="banner-warn mob-banner">Some feeds are slow — retrying automatically.</p>
+    <div
+      style={{
+        padding: '0.65rem 1rem',
+        background: 'var(--accent-soft)',
+        border: '1px solid rgba(231, 182, 10, 0.35)',
+        borderRadius: 'var(--radius)',
+        fontSize: '0.82rem',
+        color: '#634e02',
+        textAlign: 'center',
+        margin: '0.5rem 0',
+      }}
+    >
+      External API connection busy — live fallback pricing is active while reconnecting.
+    </div>
   )
 
   if (isDesktop) {
@@ -104,20 +118,24 @@ export default function Terminal() {
       <div className="desk-shell">
         <DesktopTopNav
           onTransfer={() => setAddMoneyOpen(true)}
-          onProfile={() => setTab('profile')}
-          onActivity={() => setTab('activity')}
+          onProfile={() => setDestination('profile')}
+          onActivity={() => setDestination('activity')}
         />
+
         <main className="desk-main">
-          {tab === 'wallet' && (
+          {feedWarn}
+
+          {destination === 'overview' && (
             <div className="desk-pane">
               <WalletScreen
                 symbols={all}
                 onAddMoney={() => setAddMoneyOpen(true)}
-                title={deskNav === 'portfolio' ? 'Portfolio' : 'Dashboard'}
+                title="OVERVIEW & ALLOCATION"
               />
             </div>
           )}
-          {tab === 'markets' && (
+
+          {destination === 'markets' && (
             <div className="desk-pane">
               <MarketsScreen
                 items={marketItems}
@@ -127,21 +145,31 @@ export default function Terminal() {
               />
             </div>
           )}
-          {tab === 'trade' && <DesktopTradingView current={current} symbols={all} />}
-          {tab === 'activity' && (
-            <div className="desk-pane narrow">
+
+          {destination === 'trade' && (
+            <DesktopTradingView current={current} symbols={all} />
+          )}
+
+          {destination === 'portfolio' && (
+            <div className="desk-pane">
+              <PortfolioView symbols={all} />
+            </div>
+          )}
+
+          {destination === 'activity' && (
+            <div className="desk-pane">
               <ActivityScreen />
             </div>
           )}
-          {tab === 'profile' && (
-            <div className="desk-pane narrow">
+
+          {destination === 'profile' && (
+            <div className="desk-pane">
               <ProfileScreen
                 onAddMoney={() => setAddMoneyOpen(true)}
                 onAddStock={() => setAddStockOpen(true)}
               />
             </div>
           )}
-          {feedWarn}
         </main>
 
         <AddStockModal open={addStockOpen} onClose={() => setAddStockOpen(false)} />
@@ -154,10 +182,13 @@ export default function Terminal() {
     <div className="mob-shell">
       <div className="mob-frame">
         <main className="mob-body">
-          {tab === 'wallet' && (
+          {feedWarn}
+
+          {destination === 'overview' && (
             <WalletScreen symbols={all} onAddMoney={() => setAddMoneyOpen(true)} />
           )}
-          {tab === 'markets' && (
+
+          {destination === 'markets' && (
             <MarketsScreen
               items={marketItems}
               query={query}
@@ -165,15 +196,19 @@ export default function Terminal() {
               onAddStock={() => setAddStockOpen(true)}
             />
           )}
-          {tab === 'trade' && <TradeScreen symbols={all} current={current} />}
-          {tab === 'activity' && <ActivityScreen />}
-          {tab === 'profile' && (
+
+          {destination === 'trade' && <TradeScreen symbols={all} current={current} />}
+
+          {destination === 'portfolio' && <PortfolioView symbols={all} />}
+
+          {destination === 'activity' && <ActivityScreen />}
+
+          {destination === 'profile' && (
             <ProfileScreen
               onAddMoney={() => setAddMoneyOpen(true)}
               onAddStock={() => setAddStockOpen(true)}
             />
           )}
-          {feedWarn}
         </main>
 
         {detailOpen && (

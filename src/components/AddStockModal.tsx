@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react'
-import { Upload, X } from 'lucide-react'
+import { FileSpreadsheet, Plus, Upload, X } from 'lucide-react'
 import type { AssetClass, MarketSymbol } from '../types/market'
 import { useCustomListStore, useSelectionStore } from '../store/appStore'
 import { useMoney } from '../hooks/useMoney'
@@ -13,7 +13,7 @@ export function AddStockModal({ open, onClose }: Props) {
   const add = useCustomListStore((s) => s.add)
   const addMany = useCustomListStore((s) => s.addMany)
   const setExploreFilter = useSelectionStore((s) => s.setExploreFilter)
-  const setTab = useSelectionStore((s) => s.setTab)
+  const setDestination = useSelectionStore((s) => s.setDestination)
   const { currency, usdInr } = useMoney()
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -32,116 +32,158 @@ export function AddStockModal({ open, onClose }: Props) {
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     const p = Number(price)
+    if (!Number.isFinite(p) || p <= 0) {
+      setError('Please enter a valid price greater than zero.')
+      return
+    }
+
     const err = add({
       symbol,
       name,
       assetClass,
       price: toUsd(p),
     })
+
     setError(err)
     setInfo(null)
+
     if (!err) {
       setSymbol('')
       setName('')
       setPrice('')
       setExploreFilter('mine')
-      setTab('markets')
+      setDestination('markets')
       onClose()
     }
   }
 
   const onCsv = async (file: File) => {
-    const text = await file.text()
-    const lines = text
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean)
-    if (lines.length === 0) {
-      setError('CSV is empty')
-      return
-    }
+    try {
+      const text = await file.text()
+      const lines = text
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean)
 
-    const start = lines[0].toLowerCase().includes('symbol') ? 1 : 0
-    const rows: MarketSymbol[] = []
-    for (const line of lines.slice(start)) {
-      const parts = line.split(',').map((p) => p.trim().replace(/^"|"$/g, ''))
-      if (parts.length < 3) continue
-      const [sym, nm, priceStr, cls] = parts
-      const p = Number(priceStr)
-      if (!sym || !nm || !Number.isFinite(p) || p <= 0) continue
-      rows.push({
-        id: `custom-${sym.toLowerCase()}`,
-        symbol: sym.toUpperCase(),
-        name: nm,
-        assetClass: cls === 'crypto' ? 'crypto' : 'stock',
-        price: toUsd(p),
-        change24h: 0,
-        changePct24h: 0,
-      })
-    }
+      if (lines.length === 0) {
+        setError('The selected CSV file is empty.')
+        return
+      }
 
-    const added = addMany(rows)
-    setError(null)
-    setInfo(`Imported ${added} of ${rows.length} rows`)
-    if (added > 0) {
+      const start = lines[0].toLowerCase().includes('symbol') ? 1 : 0
+      const rows: MarketSymbol[] = []
+
+      for (const line of lines.slice(start)) {
+        const parts = line.split(',').map((p) => p.trim().replace(/^"|"$/g, ''))
+        if (parts.length < 3) continue
+        const [sym, nm, priceStr, cls] = parts
+        const p = Number(priceStr)
+        if (!sym || !nm || !Number.isFinite(p) || p <= 0) continue
+
+        rows.push({
+          id: `custom-${sym.toLowerCase()}`,
+          symbol: sym.toUpperCase(),
+          name: nm,
+          assetClass: cls?.toLowerCase() === 'crypto' ? 'crypto' : 'stock',
+          price: toUsd(p),
+          change24h: 0,
+          changePct24h: 0,
+        })
+      }
+
+      if (rows.length === 0) {
+        setError('No valid rows found in CSV. Format: symbol,name,price,stock|crypto')
+        return
+      }
+
+      const added = addMany(rows)
+      setError(null)
+      setInfo(`Successfully imported ${added} custom instruments into your list.`)
       setExploreFilter('mine')
-      setTab('markets')
+      setDestination('markets')
+    } catch {
+      setError('Failed to parse CSV file. Please verify formatting.')
     }
   }
 
   return (
-    <div className="pay-overlay" role="dialog" aria-modal="true" aria-label="Add stock">
-      <button type="button" className="pay-backdrop" aria-label="Close" onClick={onClose} />
+    <div className="pay-overlay" role="dialog" aria-modal="true" aria-label="Add or Import Custom Stocks">
+      <button type="button" className="pay-backdrop" aria-label="Close modal" onClick={onClose} />
       <div className="pay-sheet">
         <div className="pay-head">
           <div>
-            <p className="pay-badge">List your own symbols</p>
-            <h2>Add / upload stocks</h2>
-            <p className="pay-sub">Manual entry or CSV · demo prices in {currency}</p>
+            <span className="pay-badge">CUSTOM SIMULATED INSTRUMENTS</span>
+            <h2>LIST CUSTOM ASSET</h2>
+            <p className="pay-sub">
+              Add individual unlisted stocks or bulk-import a CSV portfolio for paper trading.
+            </p>
           </div>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
 
-        <form className="auth-card" style={{ width: '100%', boxShadow: 'none', padding: 0, border: 0 }} onSubmit={onSubmit}>
+        <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <label className="field">
-            <span>Symbol</span>
-            <input value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="RELIANCE" required />
+            <span>Symbol / Ticker</span>
+            <input
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+              placeholder="e.g. INFY or RELIANCE"
+              required
+            />
           </label>
+
           <label className="field">
-            <span>Name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Reliance Industries" required />
+            <span>Asset / Company Name</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Infosys Limited"
+              required
+            />
           </label>
+
           <label className="field">
-            <span>Price ({currency})</span>
+            <span>Baseline Quote Price ({currency})</span>
             <input
               className="mono"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               inputMode="decimal"
-              placeholder="2500"
+              placeholder={currency === 'INR' ? 'e.g. 1500' : 'e.g. 18.50'}
               required
             />
           </label>
+
           <label className="field">
-            <span>Type</span>
-            <select value={assetClass} onChange={(e) => setAssetClass(e.target.value as AssetClass)}>
-              <option value="stock">Stock</option>
-              <option value="crypto">Crypto</option>
+            <span>Asset Class</span>
+            <select
+              value={assetClass}
+              onChange={(e) => setAssetClass(e.target.value as AssetClass)}
+            >
+              <option value="stock">Equity / Stock</option>
+              <option value="crypto">Cryptocurrency</option>
             </select>
           </label>
 
           {error && <p className="ticket-error">{error}</p>}
-          {info && <p className="muted">{info}</p>}
+          {info && <p style={{ color: 'var(--up)', fontSize: '0.85rem' }}>{info}</p>}
 
-          <button type="submit" className="submit buy">
-            Add to My list
+          <button type="submit" className="btn primary full large">
+            <Plus size={16} /> Add to Custom List
           </button>
         </form>
 
         <div className="csv-box">
-          <p className="muted">CSV format: <code>symbol,name,price,stock|crypto</code></p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <FileSpreadsheet size={18} style={{ color: 'var(--muted)' }} />
+            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Bulk CSV Import</span>
+          </div>
+          <p style={{ fontSize: '0.78rem', color: 'var(--secondary)' }}>
+            Header format: <code>symbol,name,price,stock|crypto</code>
+          </p>
+
           <input
             ref={fileRef}
             type="file"
@@ -152,10 +194,19 @@ export function AddStockModal({ open, onClose }: Props) {
               if (f) void onCsv(f)
             }}
           />
-          <button type="button" className="btn ghost full" onClick={() => fileRef.current?.click()}>
-            <Upload size={16} /> Upload CSV
+
+          <button
+            type="button"
+            className="btn ghost full"
+            onClick={() => fileRef.current?.click()}
+          >
+            <Upload size={16} /> Choose CSV File to Upload
           </button>
         </div>
+
+        <p className="disclaimer">
+          Custom instruments use manually specified demo prices and are separated under your "Custom List" tab.
+        </p>
       </div>
     </div>
   )

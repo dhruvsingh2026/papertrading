@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { X } from 'lucide-react'
 import { useMoney } from '../hooks/useMoney'
 import { usePaperStore } from '../store/appStore'
 import { PaymentDemo } from './PaymentDemo'
@@ -8,75 +9,104 @@ interface Props {
   onClose: () => void
 }
 
-const PRESETS_INR = [5_000, 10_000, 25_000, 50_000]
+const PRESETS_INR = [5_000, 10_000, 25_000, 50_000, 100_000]
+const PRESETS_USD = [100, 250, 500, 1_000, 2_500]
 
 export function AddMoneyModal({ open, onClose }: Props) {
   const addMoney = usePaperStore((s) => s.addMoney)
   const { currency, usdInr, money } = useMoney()
-  const [presetInr, setPresetInr] = useState(10_000)
-  const [custom, setCustom] = useState('')
+
+  const [selectedPreset, setSelectedPreset] = useState<number>(currency === 'INR' ? 25_000 : 500)
+  const [customValue, setCustomValue] = useState('')
   const [payOpen, setPayOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const presets = currency === 'INR' ? PRESETS_INR : PRESETS_USD
+
   const displayAmount = useMemo(() => {
-    const customNum = Number(custom)
-    if (custom.trim() && Number.isFinite(customNum) && customNum > 0) {
+    const customNum = Number(customValue)
+    if (customValue.trim() && Number.isFinite(customNum) && customNum > 0) {
       return customNum
     }
-    return currency === 'INR' ? presetInr : presetInr / usdInr
-  }, [custom, currency, presetInr, usdInr])
+    return selectedPreset
+  }, [customValue, selectedPreset])
 
   const usdAmount = useMemo(() => {
-    const customNum = Number(custom)
-    if (custom.trim() && Number.isFinite(customNum) && customNum > 0) {
-      return currency === 'INR' ? customNum / usdInr : customNum
-    }
-    return presetInr / usdInr
-  }, [custom, currency, presetInr, usdInr])
+    return currency === 'INR' ? displayAmount / usdInr : displayAmount
+  }, [displayAmount, currency, usdInr])
 
-  const amountLabel =
-    currency === 'INR'
-      ? displayAmount.toLocaleString('en-IN', {
-          style: 'currency',
-          currency: 'INR',
-          maximumFractionDigits: 0,
-        })
-      : money(usdAmount)
+  const formattedAmountLabel = useMemo(() => {
+    if (currency === 'INR') {
+      return displayAmount.toLocaleString('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        maximumFractionDigits: 0,
+      })
+    }
+    return money(usdAmount)
+  }, [displayAmount, currency, usdAmount, money])
 
   if (!open) return null
 
+  const handleOpenPayment = () => {
+    if (!Number.isFinite(usdAmount) || usdAmount <= 0) {
+      setError('Please enter a valid deposit amount greater than zero.')
+      return
+    }
+    if (usdAmount > 1_000_000) {
+      setError('Maximum simulated deposit per transaction is $1,000,000.')
+      return
+    }
+    setError(null)
+    setPayOpen(true)
+  }
+
+  const handleDepositSuccess = () => {
+    const err = addMoney(usdAmount, 'Simulated wallet deposit')
+    if (!err) {
+      setPayOpen(false)
+      onClose()
+    } else {
+      setError(err)
+    }
+  }
+
   return (
     <>
-      <div className="pay-overlay" role="dialog" aria-modal="true" aria-label="Add money">
-        <button type="button" className="pay-backdrop" aria-label="Close" onClick={onClose} />
+      <div className="pay-overlay" role="dialog" aria-modal="true" aria-label="Add Demo Funds">
+        <button type="button" className="pay-backdrop" aria-label="Close modal" onClick={onClose} />
         <div className="pay-sheet">
           <div className="pay-head">
             <div>
-              <p className="pay-badge">DEMO ONLY · no real money</p>
-              <h2>Add money to wallet</h2>
-              <p className="pay-sub">Choose an amount, then complete demo payment.</p>
+              <span className="pay-badge">SIMULATED PAPER FUNDS ONLY</span>
+              <h2>TOP UP DEMO WALLET</h2>
+              <p className="pay-sub">
+                Select or enter an amount to credit to your virtual paper-trading account.
+              </p>
             </div>
+            <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
+              <X size={18} />
+            </button>
           </div>
 
+          {/* Presets Grid */}
           <div className="add-presets">
-            {PRESETS_INR.map((inr) => {
+            {presets.map((val) => {
               const label =
                 currency === 'INR'
-                  ? inr.toLocaleString('en-IN', {
-                      style: 'currency',
-                      currency: 'INR',
-                      maximumFractionDigits: 0,
-                    })
-                  : money(inr / usdInr)
-              const active = !custom.trim() && presetInr === inr
+                  ? `₹${val.toLocaleString('en-IN')}`
+                  : `$${val.toLocaleString('en-US')}`
+              const isSelected = !customValue.trim() && selectedPreset === val
+
               return (
                 <button
-                  key={inr}
+                  key={val}
                   type="button"
-                  className={active ? 'preset active' : 'preset'}
+                  className={`preset ${isSelected ? 'active' : ''}`}
                   onClick={() => {
-                    setPresetInr(inr)
-                    setCustom('')
+                    setSelectedPreset(val)
+                    setCustomValue('')
+                    setError(null)
                   }}
                 >
                   {label}
@@ -85,38 +115,37 @@ export function AddMoneyModal({ open, onClose }: Props) {
             })}
           </div>
 
+          {/* Custom Amount Field */}
           <label className="field">
-            <span>Custom amount ({currency})</span>
+            <span>Custom Amount ({currency})</span>
             <input
               className="mono"
               inputMode="decimal"
-              placeholder={currency === 'INR' ? 'e.g. 15000' : 'e.g. 100'}
-              value={custom}
-              onChange={(e) => setCustom(e.target.value)}
+              placeholder={currency === 'INR' ? 'e.g. 15,000' : 'e.g. 200'}
+              value={customValue}
+              onChange={(e) => {
+                setCustomValue(e.target.value)
+                setError(null)
+              }}
             />
           </label>
 
-          <div className="pay-amount mono">{amountLabel}</div>
+          {/* Big Amount Readout */}
+          <div className="pay-amount mono">{formattedAmountLabel}</div>
+
           {error && <p className="ticket-error">{error}</p>}
 
           <button
             type="button"
-            className="submit buy"
-            onClick={() => {
-              if (!Number.isFinite(usdAmount) || usdAmount <= 0) {
-                setError('Enter a valid amount')
-                return
-              }
-              setError(null)
-              setPayOpen(true)
-            }}
+            className="btn primary full large"
+            onClick={handleOpenPayment}
           >
-            Continue to payment
+            Continue to Demo Checkout
           </button>
-          <button type="button" className="btn ghost full" onClick={onClose}>
-            Cancel
-          </button>
-          <p className="disclaimer">Credits paper cash only. Nothing is charged.</p>
+
+          <p className="disclaimer">
+            This checkout simulates standard payment gateways. No real credit card or bank account will ever be charged.
+          </p>
         </div>
       </div>
 
@@ -124,18 +153,11 @@ export function AddMoneyModal({ open, onClose }: Props) {
         open={payOpen}
         side="buy"
         symbol="WALLET"
-        amountLabel={amountLabel}
-        qtyLabel="top-up"
-        successHint="Adding funds to your wallet…"
+        amountLabel={formattedAmountLabel}
+        qtyLabel="Funding"
+        successHint="Virtual funds credited successfully to your paper wallet"
         onClose={() => setPayOpen(false)}
-        onSuccess={() => {
-          const err = addMoney(usdAmount)
-          setError(err)
-          if (!err) {
-            setPayOpen(false)
-            onClose()
-          }
-        }}
+        onSuccess={handleDepositSuccess}
       />
     </>
   )

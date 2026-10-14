@@ -25,7 +25,7 @@ export function AssetDetail({ current }: Props) {
   const timeframe = useSelectionStore((s) => s.timeframe)
   const setTimeframe = useSelectionStore((s) => s.setTimeframe)
   const setDetailOpen = useSelectionStore((s) => s.setDetailOpen)
-  const setTab = useSelectionStore((s) => s.setTab)
+  const setDestination = useSelectionStore((s) => s.setDestination)
   const watchIds = useWatchlistStore((s) => s.ids)
   const toggle = useWatchlistStore((s) => s.toggle)
   const { money, currency, convert, compact } = useMoney()
@@ -215,7 +215,7 @@ export function AssetDetail({ current }: Props) {
           className="btn primary large"
           onClick={() => {
             setDetailOpen(false)
-            setTab('trade')
+            setDestination('trade')
           }}
         >
           Buy
